@@ -1,0 +1,14 @@
+# Packaged builds and signing keys (never commit the .pem)
+*.zip
+*.crx
+*.pem
+
+# OS / editor clutter
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# Node (only if dependencies get added later)
+node_modules/
