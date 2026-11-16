@@ -4,14 +4,22 @@
   const { innertube, moveToTop } = window.__ytmMoveToTop;
 
   const LABELS = {
-    en: { move: 'Move to top', moving: 'Moving to top…', done: (n) => (n === 1 ? 'Moved to top' : `Moved ${n} songs to top`), fail: 'Could not move: ' },
-    de: { move: 'An den Anfang verschieben', moving: 'Wird verschoben…', done: (n) => (n === 1 ? 'An den Anfang verschoben' : `${n} Songs an den Anfang verschoben`), fail: 'Verschieben fehlgeschlagen: ' },
+    en: {
+      move: 'Move to top', moving: 'Moving to top…', done: (n) => (n === 1 ? 'Moved to top' : `Moved ${n} songs to top`), fail: 'Could not move: ',
+      jump: 'Jump to playing song', loading: 'Loading playlist…', notHere: "The playing song isn't in this playlist",
+    },
+    de: {
+      move: 'An den Anfang verschieben', moving: 'Wird verschoben…', done: (n) => (n === 1 ? 'An den Anfang verschoben' : `${n} Songs an den Anfang verschoben`), fail: 'Verschieben fehlgeschlagen: ',
+      jump: 'Zum laufenden Song springen', loading: 'Playlist wird geladen…', notHere: 'Der laufende Song ist nicht in dieser Playlist',
+    },
   };
   const L = LABELS[(document.documentElement.lang || 'en').slice(0, 2)] || LABELS.en;
 
   // The page enforces Trusted Types, so build nodes instead of using innerHTML.
   const SVG_NS = 'http://www.w3.org/2000/svg';
-  function icon() {
+  const ICON_TOP = 'M4 3h16v2H4V3Zm8 4 6 6-1.41 1.41L13 10.83V21h-2V10.83l-3.59 3.58L6 13l6-6Z';
+  const ICON_LOCATE = 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm8.94 3A8.99 8.99 0 0 0 13 3.06V1h-2v2.06A8.99 8.99 0 0 0 3.06 11H1v2h2.06A8.99 8.99 0 0 0 11 20.94V23h2v-2.06A8.99 8.99 0 0 0 20.94 13H23v-2h-2.06ZM12 19a7 7 0 1 1 0-14 7 7 0 0 1 0 14Z';
+  function icon(d = ICON_TOP) {
     const svg = document.createElementNS(SVG_NS, 'svg');
     svg.setAttribute('viewBox', '0 0 24 24');
     svg.setAttribute('width', '24');
@@ -19,7 +27,7 @@
     svg.setAttribute('fill', 'currentColor');
     svg.setAttribute('aria-hidden', 'true');
     const path = document.createElementNS(SVG_NS, 'path');
-    path.setAttribute('d', 'M4 3h16v2H4V3Zm8 4 6 6-1.41 1.41L13 10.83V21h-2V10.83l-3.59 3.58L6 13l6-6Z');
+    path.setAttribute('d', d);
     svg.appendChild(path);
     return svg;
   }
@@ -245,6 +253,113 @@
     bar.closest('ytmusic-dialog')?.refit?.();
   }
 
+  // ---------- (3) jump to the song that's playing ----------
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // What's playing, as far as the player and queue know. Songs started from a playlist
+  // carry that playlist's id and the row's setVideoId.
+  function nowPlaying() {
+    const ui = document.querySelector('ytmusic-app-layout')?.getAttribute('player-ui-state');
+    if (!ui || ui === 'INACTIVE') return null;
+    const we = document.querySelector('ytmusic-player-queue-item[selected]')?.data?.navigationEndpoint?.watchEndpoint;
+    const playerId = document.querySelector('#movie_player')?.getVideoData?.()?.video_id;
+    // Both ids count: the player's differs from the queue's when you switch between song and video.
+    const videoIds = new Set([playerId, we?.videoId].filter(Boolean));
+    if (!videoIds.size) return null;
+    return { videoIds, setVideoId: we?.playlistSetVideoId || null, playlistId: we?.playlistId || null };
+  }
+
+  const videoIdOf = (row) => row?.data?.playlistItemData?.videoId || null;
+
+  // Match on the song itself. Generated playlists (mixes, "New music" and the like) get
+  // reshuffled whenever the page is reopened, and their setVideoIds follow the position,
+  // not the song, so a setVideoId alone can point at a different song. It's only used
+  // to pick between copies when a song is in the list more than once.
+  function playingRow(np) {
+    const same = rows().filter((r) => np.videoIds.has(videoIdOf(r)));
+    if (same.length <= 1) return same[0] || null;
+    return (
+      same.find((r) => setVideoIdOf(r) === np.setVideoId) ||
+      same.find((r) => /^(playing|paused)$/.test(r.getAttribute('play-button-state') || '')) ||
+      same[0]
+    );
+  }
+
+  // Long playlists render in pages of 100. Ask for the next page, as scrolling to the end would.
+  async function loadMoreRows() {
+    const cont = shelf()?.querySelector('#contents > ytmusic-continuation-item-renderer');
+    if (!cont) return false;
+    const before = rows().length;
+    if (typeof cont.onPrescanVisible === 'function') {
+      try { cont.onPrescanVisible(); } catch { cont.scrollIntoView({ block: 'end' }); }
+    } else {
+      cont.scrollIntoView({ block: 'end' });
+    }
+    for (let t = 0; t < 10000; t += 150) {
+      await sleep(150);
+      if (rows().length > before) return true;
+    }
+    return false;
+  }
+
+  const MAX_ROWS = 5000; // YouTube's own playlist size limit
+  let jumping = false;
+  async function jumpToPlaying() {
+    if (jumping) return;
+    const np = nowPlaying();
+    if (!np) return;
+    jumping = true;
+    try {
+      let row = playingRow(np);
+      // Only page through the playlist when the song was started from it.
+      if (!row && np.playlistId && np.playlistId === currentPlaylistId()) {
+        toast(L.loading);
+        while (!row && rows().length < MAX_ROWS && (await loadMoreRows())) row = playingRow(np);
+      }
+      if (!row) {
+        toast(L.notHere, true);
+        return;
+      }
+      document.getElementById('ytm-mtt-toast')?.classList.remove('ytm-mtt-show');
+      row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      row.classList.remove('ytm-mtt-flash');
+      void row.offsetWidth; // restart the animation
+      row.classList.add('ytm-mtt-flash');
+      setTimeout(() => row.classList.remove('ytm-mtt-flash'), 2000);
+    } finally {
+      jumping = false;
+    }
+  }
+
+  function syncJumpButton() {
+    let btn = document.getElementById('ytm-mtt-jump');
+    const np = location.pathname === '/playlist' && shelf() ? nowPlaying() : null;
+    const ui = document.querySelector('ytmusic-app-layout')?.getAttribute('player-ui-state');
+    const show =
+      !!np &&
+      ui !== 'PLAYER_PAGE_OPEN' &&
+      ui !== 'FULLSCREEN' &&
+      (np.playlistId === currentPlaylistId() || rows().some((r) => np.videoIds.has(videoIdOf(r))));
+    if (!show) {
+      btn?.remove();
+      return;
+    }
+    if (btn) return;
+    btn = document.createElement('button');
+    btn.id = 'ytm-mtt-jump';
+    btn.type = 'button';
+    btn.title = L.jump;
+    btn.setAttribute('aria-label', L.jump);
+    btn.appendChild(icon(ICON_LOCATE));
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      jumpToPlaying();
+    });
+    document.body.appendChild(btn);
+  }
+
   // ---------- wiring ----------
 
   let scheduled = false;
@@ -255,6 +370,7 @@
       scheduled = false;
       syncPopupItem();
       syncMultiSelectButton();
+      syncJumpButton();
     });
   }
 
@@ -262,7 +378,7 @@
     childList: true,
     subtree: true,
     attributes: true,
-    attributeFilter: ['aria-hidden', 'style', 'is-checked'],
+    attributeFilter: ['aria-hidden', 'style', 'is-checked', 'play-button-state', 'player-ui-state', 'selected'],
   });
   schedule();
 })();

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "YT Music: Move to Top",
-  "version": "0.1.0",
-  "description": "Adds a \"Move to top\" action to your YouTube Music playlists, for single songs and multi-selections.",
+  "version": "0.2.0",
+  "description": "Adds \"Move to top\" to your YouTube Music playlists (single songs and multi-selections) and a button to jump to the playing song.",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",

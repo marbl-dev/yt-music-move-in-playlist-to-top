@@ -59,6 +59,42 @@ ytmusic-multi-select-menu-bar:has(.ytm-mtt-bar-btn) > .text {
   height: 24px;
 }
 
+/* Floating "jump to playing song" button, above the player bar on the right. */
+#ytm-mtt-jump {
+  position: fixed;
+  right: 24px;
+  bottom: 96px;
+  z-index: 10000;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #2b2b2b;
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+}
+#ytm-mtt-jump:hover {
+  background: #3d3d3d;
+}
+#ytm-mtt-jump svg {
+  width: 24px;
+  height: 24px;
+}
+
+/* Brief highlight on the row we jumped to. */
+@keyframes ytm-mtt-flash {
+  0%, 40% { background-color: rgba(255, 255, 255, 0.18); }
+  100% { background-color: transparent; }
+}
+ytmusic-responsive-list-item-renderer.ytm-mtt-flash {
+  animation: ytm-mtt-flash 2s ease-out;
+}
+
 /* Status toast. */
 #ytm-mtt-toast {
   position: fixed;

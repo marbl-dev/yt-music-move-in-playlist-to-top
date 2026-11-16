@@ -7,6 +7,8 @@ A small Chrome/Edge extension that adds **Move to top** to your YouTube Music pl
 
 The list updates in place. There's no page reload, so playback keeps going.
 
+It also adds a **Jump to playing song** button (⌖, bottom right, above the player bar). It shows up on a playlist page while a song from that playlist is playing. Click it to scroll to the song's row, which briefly lights up. In long playlists it loads further pages first if the song isn't loaded yet. This works on any playlist, not just ones you can edit.
+
 ## Install (unpacked)
 
 1. Open `chrome://extensions` (or `edge://extensions`).
@@ -24,6 +26,7 @@ After editing the code, click the extension's reload icon on the extensions page
 - The ⋮ menu entry only appears when the menu has YouTube's own **Remove from playlist** item. That item carries the playlist ID and the row's `setVideoId`, and its presence means you're allowed to edit the playlist.
 - `src/api.js` calls the same internal endpoint the web app uses when you drag a song: `POST /youtubei/v1/browse/edit_playlist` with `ACTION_MOVE_VIDEO_BEFORE`. It signs the request with your existing session (the `SAPISIDHASH` header), so no API key or OAuth setup is needed.
 - To put songs at the top, it moves them before the song currently in position 1. For a multi-selection, every move goes in a single request.
+- The jump button looks up the playing song's video ID in the list. Generated playlists such as mixes and *New music* are reshuffled each time you open them, so it matches on the song, not its position. If a song is in the list twice, it uses the row the play queue recorded (`playlistSetVideoId`).
 
 ## Limits
 
